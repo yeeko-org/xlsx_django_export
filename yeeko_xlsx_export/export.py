@@ -223,14 +223,14 @@ def _build_col_keys(
 ) -> list[str]:
     """Construye las keys del dict de fila para cada columna.
 
-    Combina through_chain + orm_path para generar la key que
-    extract_row_auto produce.
+    Combina through_chain + key para generar la misma clave que
+    extract_row_auto produce en el dict de fila.
     """
     keys: list[str] = []
     for rc in resolved:
         if rc.through_chain:
             prefix = "__".join(rc.through_chain)
-            keys.append(f"{prefix}__{rc.orm_path}")
+            keys.append(f"{prefix}__{rc.key}")
         else:
-            keys.append(rc.orm_path)
+            keys.append(rc.key)
     return keys

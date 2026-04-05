@@ -239,6 +239,7 @@ class ResolvedColumn:
     """Columna ya resuelta con título, width, y path de extracción."""
     title: str
     width: int
+    key: str  # clave lógica en el dict de fila (field o full_path)
     orm_path: str
     operation: str | None
     join_separator: str
@@ -298,6 +299,7 @@ def flatten_columns(
             result.append(ResolvedColumn(
                 title=col.resolve_title(model),
                 width=col.resolve_width(model),
+                key=_col_key(col),
                 orm_path=col.orm_path,
                 operation=col.operation,
                 join_separator=col.join_separator,
@@ -384,12 +386,9 @@ def extract_row_auto(
                         col.operation, value, col.join_separator,
                     )
             else:
-                path = (
-                    col.full_path
-                    if isinstance(col, FkColumn)
-                    else col.field
+                value = resolve_field_path(
+                    obj, col.orm_path,
                 )
-                value = resolve_field_path(obj, path)
 
             row[key] = value
 
