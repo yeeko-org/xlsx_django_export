@@ -12,6 +12,7 @@ setup(
     packages=find_packages(),
     install_requires=[
         "django>=4.1",
+        "djangorestframework>=3.14",
         "XlsxWriter>=3.0.2",
     ],
     python_requires='>=3.9',
