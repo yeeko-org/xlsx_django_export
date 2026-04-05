@@ -111,6 +111,11 @@ def _walk_path_for_optimization(
 ) -> tuple[set[str], set[str]]:
     """Analiza un path y determina qué optimizaciones necesita.
 
+    Una vez que se cruza una frontera de prefetch (reverse FK o
+    M2M), todos los segmentos subsiguientes extienden el
+    prefetch_related — ``select_related`` no puede cruzar esa
+    frontera.
+
     Returns:
         (select_related paths, prefetch_related paths)
     """
@@ -120,6 +125,7 @@ def _walk_path_for_optimization(
     parts = path.split("__")
     current_model = model
     accumulated = prefix
+    in_prefetch = False
 
     for part in parts:
         if current_model is None:
@@ -139,16 +145,25 @@ def _walk_path_for_optimization(
             break
 
         if rel_type == "prefetch":
+            in_prefetch = True
+
+        if in_prefetch:
             prefetches.add(accumulated)
-            # Después de un prefetch, el resto se encadena
-            current_model = getattr(
-                field_obj, "related_model", None
-            )
         else:
             selects.add(accumulated)
-            current_model = getattr(
-                field_obj, "related_model", None
-            )
+
+        current_model = getattr(
+            field_obj, "related_model", None
+        )
+
+    # Solo conservar el prefetch más profundo de cada cadena:
+    # "a__b" y "a__b__c" → solo "a__b__c"
+    to_discard = set()
+    for p in prefetches:
+        for q in prefetches:
+            if q != p and q.startswith(f"{p}__"):
+                to_discard.add(p)
+    prefetches -= to_discard
 
     return selects, prefetches
 
