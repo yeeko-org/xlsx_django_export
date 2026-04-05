@@ -2,7 +2,7 @@ from setuptools import setup, find_packages
 
 setup(
     name='yeeko_xlsx_export',
-    version='2.0.5',
+    version='2.1.0',
     description='Declarative Django model → Excel export framework',
     long_description=open('README.md').read(),
     long_description_content_type='text/markdown',
