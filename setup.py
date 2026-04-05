@@ -2,8 +2,8 @@ from setuptools import setup, find_packages
 
 setup(
     name='yeeko_xlsx_export',
-    version='0.0.3',
-    description='generic xlsx export tool',
+    version='2.0.0',
+    description='Declarative Django model → Excel export framework',
     long_description=open('README.md').read(),
     long_description_content_type='text/markdown',
     author='vash Lucian',
@@ -11,10 +11,8 @@ setup(
     url='https://github.com/yeeko-org/xlsx_export',
     packages=find_packages(),
     install_requires=[
-        "django>=4.1.15",
-        "djangorestframework>=3.13.1",
+        "django>=4.1",
         "XlsxWriter>=3.0.2",
-        "pytz>=2021.3",
     ],
-    python_requires='>=3.6',
+    python_requires='>=3.9',
 )
