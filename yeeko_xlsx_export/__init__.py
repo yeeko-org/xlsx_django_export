@@ -11,7 +11,7 @@ API pública::
         export_xlsx,                    # motor xlsxwriter
     )
 """
-from .columns import FkColumn, Include, XlsColumn
+from .columns import CollectColumn, FkColumn, Include, XlsColumn
 from .engine import export_xlsx
 from .export import ModelExport
 from .view import ExportActionMixin, ExportView
@@ -19,6 +19,7 @@ from .view import ExportActionMixin, ExportView
 __all__ = [
     "XlsColumn",
     "FkColumn",
+    "CollectColumn",
     "Include",
     "ModelExport",
     "ExportView",

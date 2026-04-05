@@ -1,7 +1,7 @@
 """Tests end-to-end para yeeko_xlsx_export.export.ModelExport."""
 import pytest
 from yeeko_xlsx_export import (
-    FkColumn, Include, ModelExport, XlsColumn,
+    CollectColumn, FkColumn, Include, ModelExport, XlsColumn,
 )
 
 
@@ -38,16 +38,10 @@ class ArticleWithOpsExport(ModelExport):
     columns = [
         XlsColumn("id"),
         XlsColumn("title"),
-        XlsColumn(
-            "comment_count",
-            source="comments__text",
-            operation="count",
+        CollectColumn(
+            "comments", "text", operation="count",
         ),
-        XlsColumn(
-            "tag_list",
-            source="tags__name",
-            operation="join",
-        ),
+        CollectColumn("tags", "name"),
     ]
 
 

@@ -1,7 +1,8 @@
 """Tests para yeeko_xlsx_export.columns."""
 import pytest
 from yeeko_xlsx_export.columns import (
-    FkColumn, Include, XlsColumn, _resolve_width_for_field,
+    CollectColumn, FkColumn, Include, XlsColumn,
+    _resolve_width_for_field,
 )
 
 
@@ -24,13 +25,13 @@ class TestXlsColumn:
         )
         assert col.orm_path == "participants__mention__note__date"
 
-    def test_needs_collect(self):
+    def test_needs_collect_always_false(self):
         col = XlsColumn(
             "note_count",
             source="participants__mention__note__date",
             operation="count",
         )
-        assert col.needs_collect is True
+        assert col.needs_collect is False
 
     def test_no_collect_without_source(self):
         col = XlsColumn("name", operation="count")
@@ -113,6 +114,65 @@ class TestFkColumn:
             "publisher", "country", title="País editorial",
         )
         assert col.resolve_title(Article) == "País editorial"
+
+
+class TestCollectColumn:
+    def test_full_path(self):
+        col = CollectColumn("tags", "name")
+        assert col.full_path == "tags__name"
+
+    def test_orm_path(self):
+        col = CollectColumn("tags", "name")
+        assert col.orm_path == "tags__name"
+
+    def test_default_operation_is_join(self):
+        col = CollectColumn("tags", "name")
+        assert col.operation == "join"
+
+    def test_explicit_operation(self):
+        col = CollectColumn("tags", "name", operation="count")
+        assert col.operation == "count"
+
+    def test_needs_collect_always_true(self):
+        col = CollectColumn("tags", "name")
+        assert col.needs_collect is True
+
+    def test_deep_chain_full_path(self):
+        col = CollectColumn(
+            "participants__mention__note", "date",
+        )
+        assert col.full_path == (
+            "participants__mention__note__date"
+        )
+
+    def test_resolve_title_explicit(self):
+        col = CollectColumn(
+            "tags", "name", title="Etiquetas",
+        )
+        assert col.resolve_title() == "Etiquetas"
+
+    def test_resolve_title_fallback(self):
+        col = CollectColumn("tags", "some_field")
+        assert col.resolve_title() == "Some field"
+
+    @pytest.mark.django_db
+    def test_resolve_title_from_model(self):
+        from tests.models import Article
+        col = CollectColumn("tags", "name")
+        resolved = col.resolve_title(Article)
+        assert resolved == "Nombre de etiqueta"
+
+    @pytest.mark.django_db
+    def test_resolve_width_explicit(self):
+        col = CollectColumn("tags", "name", width=30)
+        assert col.resolve_width() == 30
+
+    @pytest.mark.django_db
+    def test_resolve_width_from_model(self):
+        from tests.models import Article
+        col = CollectColumn("tags", "name")
+        # CharField max_length=50 → 20
+        assert col.resolve_width(Article) == 20
 
 
 class TestInclude:

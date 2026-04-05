@@ -1,6 +1,8 @@
 """Tests para yeeko_xlsx_export.resolve."""
 import pytest
-from yeeko_xlsx_export.columns import FkColumn, Include, XlsColumn
+from yeeko_xlsx_export.columns import (
+    CollectColumn, FkColumn, Include, XlsColumn,
+)
 from yeeko_xlsx_export.resolve import (
     extract_row_auto,
     flatten_columns,
@@ -97,11 +99,7 @@ class TestInferOptimizations:
     def test_m2m_infers_prefetch(self):
         from tests.models import Article
         columns = [
-            XlsColumn(
-                "tag_names",
-                source="tags__name",
-                operation="join",
-            ),
+            CollectColumn("tags", "name"),
         ]
         selects, prefetches = infer_optimizations(
             Article, columns,
@@ -111,10 +109,8 @@ class TestInferOptimizations:
     def test_reverse_fk_infers_prefetch(self):
         from tests.models import Article
         columns = [
-            XlsColumn(
-                "comment_count",
-                source="comments__text",
-                operation="count",
+            CollectColumn(
+                "comments", "text", operation="count",
             ),
         ]
         selects, prefetches = infer_optimizations(
@@ -251,14 +247,12 @@ class TestExtractRowAuto:
 
         obj = SimpleObj(items=FakeManager())
         columns = [
-            XlsColumn(
-                "total",
-                source="items__score",
-                operation="sum",
+            CollectColumn(
+                "items", "score", operation="sum",
             ),
         ]
         row = extract_row_auto(obj, columns)
-        assert row["total"] == 60
+        assert row["items__score"] == 60
 
     def test_condition_excludes_column(self):
         obj = SimpleObj(public=1, secret=2)

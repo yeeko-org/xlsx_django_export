@@ -11,7 +11,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
-from .columns import FkColumn, Include, XlsColumn
+from .columns import CollectColumn, FkColumn, Include, XlsColumn
 from .operations import apply_operation
 
 if TYPE_CHECKING:
@@ -391,9 +391,11 @@ def extract_row_auto(
     return row
 
 
-def _col_key(col: XlsColumn | FkColumn) -> str:
+def _col_key(
+    col: XlsColumn | FkColumn | CollectColumn,
+) -> str:
     """Key del dict de fila para una columna."""
-    if isinstance(col, FkColumn):
+    if isinstance(col, (FkColumn, CollectColumn)):
         return col.full_path
     return col.field
 

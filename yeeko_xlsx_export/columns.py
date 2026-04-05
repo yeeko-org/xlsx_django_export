@@ -1,9 +1,10 @@
 """
 Descriptores de columnas para exportación Excel.
 
-XlsColumn — columna vinculada a un campo del modelo.
-FkColumn  — columna que cruza una FK (hace explícito el salto).
-Include   — integra un ModelExport reutilizable dentro de otro.
+XlsColumn      — columna vinculada a un campo del modelo.
+FkColumn       — columna que cruza una FK (hace explícito el salto).
+CollectColumn  — columna que recolecta valores por M2M / reverse FK.
+Include        — integra un ModelExport reutilizable dentro de otro.
 """
 from __future__ import annotations
 
@@ -119,8 +120,12 @@ class XlsColumn:
 
     @property
     def needs_collect(self) -> bool:
-        """True si la extracción debe recolectar valores (M2M)."""
-        return self.source is not None and self.operation is not None
+        """Siempre False para XlsColumn base.
+
+        CollectColumn overridea a True. Tras la migración a
+        CollectColumn, ningún XlsColumn necesita recolección.
+        """
+        return False
 
     def resolve_title(
         self, model: type[models.Model] | None = None,
@@ -255,6 +260,121 @@ class FkColumn(XlsColumn):
             return _resolve_width_for_field(django_field)
         except Exception:
             return FALLBACK_WIDTH
+
+
+# ── CollectColumn ─────────────────────────────────────────────
+
+@dataclass
+class CollectColumn(XlsColumn):
+    """Columna que recolecta valores por relación M2M o reverse FK.
+
+    Reemplaza el patrón ``XlsColumn(source=..., operation=...)``.
+    Separa la cadena de relación del campo final::
+
+        CollectColumn("belongs", "name")  # M2M simple
+        CollectColumn("participants__mention__note", "date",
+                       operation="count")  # cadena profunda
+
+    Args:
+        relation: Cadena de relación (soporta multi-hop con __).
+        field: Campo final a extraer del modelo destino.
+        operation: Operación post-recolección (default: "join").
+    """
+    relation: str = ""
+
+    def __init__(
+        self,
+        relation: str,
+        field: str,
+        **kwargs: Any,
+    ) -> None:
+        kwargs.setdefault("operation", "join")
+        self.relation = relation
+        super().__init__(field=field, **kwargs)
+
+    @property
+    def full_path(self) -> str:
+        """Path completo: relation__field."""
+        return f"{self.relation}__{self.field}"
+
+    @property
+    def orm_path(self) -> str:
+        return self.full_path
+
+    @property
+    def needs_collect(self) -> bool:
+        return True
+
+    def resolve_title(
+        self, model: type[models.Model] | None = None,
+    ) -> str:
+        """Resuelve título navegando la cadena de relación."""
+        if self.title is not None:
+            return self.title
+        if model is None:
+            return self.field.replace("_", " ").capitalize()
+
+        try:
+            # Navegar la cadena de relación
+            current_model = model
+            for part in self.relation.split("__"):
+                django_field = current_model._meta.get_field(part)
+                current_model = django_field.related_model
+                if current_model is None:
+                    break
+
+            if current_model is not None:
+                field_parts = self.field.split("__")
+                django_field = current_model._meta.get_field(
+                    field_parts[0],
+                )
+                for fp in field_parts[1:]:
+                    rm = django_field.related_model
+                    if rm is None:
+                        break
+                    django_field = rm._meta.get_field(fp)
+                target_model = (
+                    getattr(django_field, "related_model", None)
+                    or current_model
+                )
+                return _resolve_title_for_field(
+                    django_field, field_parts[-1], target_model,
+                )
+        except Exception:
+            pass
+        return self.field.replace("_", " ").capitalize()
+
+    def resolve_width(
+        self, model: type[models.Model] | None = None,
+    ) -> int:
+        """Resuelve ancho navegando la cadena de relación."""
+        if self.width is not None:
+            return self.width
+        if model is None:
+            return FALLBACK_WIDTH
+
+        try:
+            current_model = model
+            for part in self.relation.split("__"):
+                django_field = current_model._meta.get_field(part)
+                current_model = django_field.related_model
+                if current_model is None:
+                    break
+
+            if current_model is not None:
+                field_parts = self.field.split("__")
+                django_field = current_model._meta.get_field(
+                    field_parts[0],
+                )
+                for fp in field_parts[1:]:
+                    rm = django_field.related_model
+                    if rm is None:
+                        break
+                    django_field = rm._meta.get_field(fp)
+                return _resolve_width_for_field(django_field)
+        except Exception:
+            pass
+        return FALLBACK_WIDTH
 
 
 # ── Include ────────────────────────────────────────────────────
