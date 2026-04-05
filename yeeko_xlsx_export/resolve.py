@@ -219,12 +219,8 @@ def infer_optimizations(
 
         elif isinstance(col, (XlsColumn, FkColumn)):
             path = col.orm_path
-            full_path = (
-                f"{through_prefix}__{path}"
-                if through_prefix else path
-            )
             s, p = _walk_path_for_optimization(
-                model, full_path,
+                model, path, through_prefix,
             )
             selects.update(s)
             prefetches.update(p)
