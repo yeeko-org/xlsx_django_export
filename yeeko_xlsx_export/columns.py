@@ -388,6 +388,11 @@ class Include:
         through: Ruta de relación en el modelo padre para llegar
             al objeto del bloque. None → campos leídos directo
             del objeto raíz (caso anotaciones).
+        condition: Callable(request) → bool. Si retorna False,
+            el bloque completo se omite (headers y datos).
+            Las conditions individuales de cada columna dentro
+            del bloque se evalúan normalmente después.
     """
     block: type  # type[ModelExport] — string para evitar circular
     through: str | None = None
+    condition: Callable | None = None

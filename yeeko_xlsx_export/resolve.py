@@ -272,6 +272,11 @@ def flatten_columns(
 
     for col in columns:
         if isinstance(col, Include):
+            # Evaluar condition del Include
+            if col.condition is not None:
+                if request is None or not col.condition(request):
+                    continue
+
             block_instance = col.block()
             block_model = getattr(col.block, "model", None)
             child_chain = (
@@ -330,6 +335,11 @@ def extract_row_auto(
 
     for col in columns:
         if isinstance(col, Include):
+            # Evaluar condition del Include
+            if col.condition is not None:
+                if request is None or not col.condition(request):
+                    continue
+
             block_instance = col.block()
 
             if col.through:
