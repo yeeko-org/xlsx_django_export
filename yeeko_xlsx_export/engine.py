@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import io
 from datetime import date, datetime
+from decimal import Decimal
 from typing import Any
 from zoneinfo import ZoneInfo
 
@@ -22,6 +23,19 @@ def _get_timezone() -> ZoneInfo:
     except Exception:
         tz_name = "UTC"
     return ZoneInfo(tz_name)
+
+
+def _resolve_max_decimal(
+    max_decimals: list[int | None] | None,
+    col_idx: int,
+    ws_default: int,
+) -> int:
+    """Jerarquía: columna > worksheet > 2."""
+    if max_decimals and col_idx < len(max_decimals):
+        col_val = max_decimals[col_idx]
+        if col_val is not None:
+            return col_val
+    return ws_default
 
 
 def export_xlsx(
@@ -77,7 +91,8 @@ def export_xlsx(
         table_data = ws_data.get("table_data", [])
         columns_width = ws_data.get("columns_width")
         columns_width_pixel = ws_data.get("columns_width_pixel")
-        max_decimal = ws_data.get("max_decimal", 1)
+        max_decimal = ws_data.get("max_decimal", 2)
+        max_decimals = ws_data.get("max_decimals")
 
         worksheet = workbook.add_worksheet(ws_name)
 
@@ -103,12 +118,15 @@ def export_xlsx(
                     else None
                 )
 
+                col_decimal = _resolve_max_decimal(
+                    max_decimals, col_idx, max_decimal,
+                )
                 _write_cell(
                     worksheet, workbook,
                     row_idx, col_idx, cell,
                     cell_fmt, date_fmt, datetime_fmt,
                     bold_fmt, bool_bold_fmt,
-                    tz, max_decimal, is_first_col,
+                    tz, col_decimal, is_first_col,
                 )
 
     workbook.close()
@@ -186,13 +204,11 @@ def _write_cell(
         worksheet.write_datetime(row, col, cell, d_fmt)
         return
 
-    # ── float → redondear ───────────────────────────────────
-    if isinstance(cell, float):
-        rounded = float(f"{cell:.{max_decimal}f}")
+    if isinstance(cell, (float, Decimal)):
+        rounded = float(f"{float(cell):.{max_decimal}f}")
         worksheet.write(row, col, rounded, cell_fmt)
         return
 
-    # ── int ─────────────────────────────────────────────────
     if isinstance(cell, int):
         worksheet.write(row, col, cell, cell_fmt)
         return

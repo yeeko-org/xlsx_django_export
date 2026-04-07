@@ -19,6 +19,16 @@ if TYPE_CHECKING:
     from django.http import HttpRequest
 
 
+def _should_skip(
+    col: XlsColumn | Include,
+    request: HttpRequest | None,
+) -> bool:
+    """True si la columna/include debe omitirse por condition."""
+    if col.condition is None:
+        return False
+    return request is None or not col.condition(request)
+
+
 # ── Resolución de field paths ──────────────────────────────────
 
 def resolve_field_path(
@@ -219,9 +229,7 @@ def infer_optimizations(
 
         elif isinstance(col, (XlsColumn, FkColumn)):
             path = col.orm_path
-            s, p = _walk_path_for_optimization(
-                model, path, through_prefix,
-            )
+            s, p = _walk_path_for_optimization(model, path, through_prefix)
             selects.update(s)
             prefetches.update(p)
 
@@ -235,6 +243,7 @@ class ResolvedColumn:
     """Columna ya resuelta con título, width, y path de extracción."""
     title: str
     width: int
+    max_decimal: int | None
     key: str  # clave lógica en el dict de fila (field o full_path)
     orm_path: str
     operation: str | None
@@ -272,10 +281,8 @@ def flatten_columns(
 
     for col in columns:
         if isinstance(col, Include):
-            # Evaluar condition del Include
-            if col.condition is not None:
-                if request is None or not col.condition(request):
-                    continue
+            if _should_skip(col, request):
+                continue
 
             block_instance = col.block()
             block_model = getattr(col.block, "model", None)
@@ -292,14 +299,13 @@ def flatten_columns(
             result.extend(child_columns)
 
         elif isinstance(col, (XlsColumn, FkColumn)):
-            # Evaluar condition
-            if col.condition is not None:
-                if request is None or not col.condition(request):
-                    continue
+            if _should_skip(col, request):
+                continue
 
             result.append(ResolvedColumn(
                 title=col.resolve_title(model),
                 width=col.resolve_width(model),
+                max_decimal=col.max_decimal,
                 key=_col_key(col),
                 orm_path=col.orm_path,
                 operation=col.operation,
@@ -335,10 +341,8 @@ def extract_row_auto(
 
     for col in columns:
         if isinstance(col, Include):
-            # Evaluar condition del Include
-            if col.condition is not None:
-                if request is None or not col.condition(request):
-                    continue
+            if _should_skip(col, request):
+                continue
 
             block_instance = col.block()
 
@@ -370,10 +374,8 @@ def extract_row_auto(
                 row.update(sub_row)
 
         elif isinstance(col, (XlsColumn, FkColumn)):
-            # Evaluar condition
-            if col.condition is not None:
-                if request is None or not col.condition(request):
-                    continue
+            if _should_skip(col, request):
+                continue
 
             key = _col_key(col)
 

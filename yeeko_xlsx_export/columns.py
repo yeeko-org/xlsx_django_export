@@ -39,6 +39,33 @@ WIDTH_DEFAULTS: dict[str, int] = {
 FALLBACK_WIDTH = 15
 
 
+def _navigate_to_field(
+    model: type[models.Model],
+    path: str,
+) -> tuple[Any, type[models.Model]]:
+    """Navega un path ``__``-separated por ``_meta.get_field``.
+
+    Returns:
+        (django_field, target_model) donde target_model es el
+        related_model del campo final, o el modelo que lo contiene
+        si no es relación.
+    """
+    parts = path.split("__")
+    current_model = model
+    django_field = current_model._meta.get_field(parts[0])
+    for part in parts[1:]:
+        rm = getattr(django_field, "related_model", None)
+        if rm is None:
+            break
+        current_model = rm
+        django_field = current_model._meta.get_field(part)
+    target_model = (
+        getattr(django_field, "related_model", None)
+        or current_model
+    )
+    return django_field, target_model
+
+
 def _resolve_width_for_field(
     django_field: Any,
 ) -> int:
@@ -108,6 +135,7 @@ class XlsColumn:
     field: str
     title: str | None = None
     width: int | None = None
+    max_decimal: int | None = None
     condition: Callable[[HttpRequest], bool] | None = None
     operation: str | None = None
     source: str | None = None
@@ -117,6 +145,11 @@ class XlsColumn:
     def orm_path(self) -> str:
         """Path completo para el ORM (field o source)."""
         return self.source or self.field
+
+    @property
+    def _meta_path(self) -> str:
+        """Path para resolución de metadata (title/width)."""
+        return self.field
 
     @property
     def needs_collect(self) -> bool:
@@ -136,23 +169,10 @@ class XlsColumn:
         if model is None:
             return self.field.replace("_", " ").capitalize()
 
-        # Intentar resolver contra el modelo
-        parts = self.field.split("__")
         try:
-            django_field = model._meta.get_field(parts[0])
-            # Para paths con __, seguir hasta el campo final
-            for part in parts[1:]:
-                related_model = django_field.related_model
-                if related_model is None:
-                    break
-                django_field = related_model._meta.get_field(part)
-            target_model = (
-                getattr(django_field, "related_model", None)
-                or model
-            )
-            return _resolve_title_for_field(
-                django_field, parts[-1], target_model,
-            )
+            dj_field, target = _navigate_to_field(model, self._meta_path)
+            last_part = self._meta_path.rsplit("__", 1)[-1]
+            return _resolve_title_for_field(dj_field, last_part, target)
         except Exception:
             return self.field.replace("_", " ").capitalize()
 
@@ -165,15 +185,9 @@ class XlsColumn:
         if model is None:
             return FALLBACK_WIDTH
 
-        parts = self.field.split("__")
         try:
-            django_field = model._meta.get_field(parts[0])
-            for part in parts[1:]:
-                related_model = django_field.related_model
-                if related_model is None:
-                    break
-                django_field = related_model._meta.get_field(part)
-            return _resolve_width_for_field(django_field)
+            dj_field, _ = _navigate_to_field(model, self._meta_path)
+            return _resolve_width_for_field(dj_field)
         except Exception:
             return FALLBACK_WIDTH
 
@@ -207,59 +221,12 @@ class FkColumn(XlsColumn):
         return f"{self.relation}__{self.field}"
 
     @property
+    def _meta_path(self) -> str:
+        return self.full_path
+
+    @property
     def orm_path(self) -> str:
         return self.source or self.full_path
-
-    def resolve_title(
-        self, model: type[models.Model] | None = None,
-    ) -> str:
-        if self.title is not None:
-            return self.title
-        if model is None:
-            return self.field.replace("_", " ").capitalize()
-
-        # Resolver desde el modelo de la FK
-        try:
-            fk_field = model._meta.get_field(self.relation)
-            related_model = fk_field.related_model
-            parts = self.field.split("__")
-            django_field = related_model._meta.get_field(parts[0])
-            for part in parts[1:]:
-                rm = django_field.related_model
-                if rm is None:
-                    break
-                django_field = rm._meta.get_field(part)
-            target_model = (
-                getattr(django_field, "related_model", None)
-                or related_model
-            )
-            return _resolve_title_for_field(
-                django_field, parts[-1], target_model,
-            )
-        except Exception:
-            return self.field.replace("_", " ").capitalize()
-
-    def resolve_width(
-        self, model: type[models.Model] | None = None,
-    ) -> int:
-        if self.width is not None:
-            return self.width
-        if model is None:
-            return FALLBACK_WIDTH
-
-        try:
-            fk_field = model._meta.get_field(self.relation)
-            related_model = fk_field.related_model
-            parts = self.field.split("__")
-            django_field = related_model._meta.get_field(parts[0])
-            for part in parts[1:]:
-                rm = django_field.related_model
-                if rm is None:
-                    break
-                django_field = rm._meta.get_field(part)
-            return _resolve_width_for_field(django_field)
-        except Exception:
-            return FALLBACK_WIDTH
 
 
 # ── CollectColumn ─────────────────────────────────────────────
@@ -298,83 +265,16 @@ class CollectColumn(XlsColumn):
         return f"{self.relation}__{self.field}"
 
     @property
+    def _meta_path(self) -> str:
+        return self.full_path
+
+    @property
     def orm_path(self) -> str:
         return self.full_path
 
     @property
     def needs_collect(self) -> bool:
         return True
-
-    def resolve_title(
-        self, model: type[models.Model] | None = None,
-    ) -> str:
-        """Resuelve título navegando la cadena de relación."""
-        if self.title is not None:
-            return self.title
-        if model is None:
-            return self.field.replace("_", " ").capitalize()
-
-        try:
-            # Navegar la cadena de relación
-            current_model = model
-            for part in self.relation.split("__"):
-                django_field = current_model._meta.get_field(part)
-                current_model = django_field.related_model
-                if current_model is None:
-                    break
-
-            if current_model is not None:
-                field_parts = self.field.split("__")
-                django_field = current_model._meta.get_field(
-                    field_parts[0],
-                )
-                for fp in field_parts[1:]:
-                    rm = django_field.related_model
-                    if rm is None:
-                        break
-                    django_field = rm._meta.get_field(fp)
-                target_model = (
-                    getattr(django_field, "related_model", None)
-                    or current_model
-                )
-                return _resolve_title_for_field(
-                    django_field, field_parts[-1], target_model,
-                )
-        except Exception:
-            pass
-        return self.field.replace("_", " ").capitalize()
-
-    def resolve_width(
-        self, model: type[models.Model] | None = None,
-    ) -> int:
-        """Resuelve ancho navegando la cadena de relación."""
-        if self.width is not None:
-            return self.width
-        if model is None:
-            return FALLBACK_WIDTH
-
-        try:
-            current_model = model
-            for part in self.relation.split("__"):
-                django_field = current_model._meta.get_field(part)
-                current_model = django_field.related_model
-                if current_model is None:
-                    break
-
-            if current_model is not None:
-                field_parts = self.field.split("__")
-                django_field = current_model._meta.get_field(
-                    field_parts[0],
-                )
-                for fp in field_parts[1:]:
-                    rm = django_field.related_model
-                    if rm is None:
-                        break
-                    django_field = rm._meta.get_field(fp)
-                return _resolve_width_for_field(django_field)
-        except Exception:
-            pass
-        return FALLBACK_WIDTH
 
 
 # ── Include ────────────────────────────────────────────────────

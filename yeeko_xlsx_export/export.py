@@ -48,6 +48,7 @@ class ModelExport:
     model: type[Model]
     columns: list[XlsColumn | FkColumn | Include] = []
     export_name: str = "Exportación"
+    max_decimal: int = 2
     extra_prefetch: list[str] = []
 
     def get_base_queryset(self) -> QuerySet:
@@ -139,7 +140,7 @@ class ModelExport:
     ) -> list[dict[str, Any]]:
         """Genera la estructura de datos para export_xlsx().
 
-        Orquesta todo el pipeline:
+        Orquesta todito el pipeline:
         1. Resuelve columnas → headers + widths
         2. Obtiene queryset (o usa el proporcionado)
         3. Extrae filas (aplana si extract_row retorna lista)
@@ -183,15 +184,17 @@ class ModelExport:
         col_keys = _build_col_keys(resolved)
         table_data = [headers]
         for row_dict in raw_rows:
-            row_list = [
-                row_dict.get(key, "") for key in col_keys
-            ]
+            row_list = [row_dict.get(key, "") for key in col_keys]
             table_data.append(row_list)
+
+        max_decimals = [rc.max_decimal for rc in resolved]
 
         return [{
             "name": self.export_name,
             "table_data": table_data,
             "columns_width": widths,
+            "max_decimal": self.max_decimal,
+            "max_decimals": max_decimals,
         }]
 
     def to_xlsx(
@@ -213,9 +216,7 @@ class ModelExport:
         data = self.generate(queryset, request)
         from django.template.defaultfilters import slugify
         file_name = slugify(self.export_name) + ".xlsx"
-        return export_xlsx(
-            name=file_name, data=data, in_memory=in_memory,
-        )
+        return export_xlsx(name=file_name, data=data, in_memory=in_memory)
 
 
 def _build_col_keys(
