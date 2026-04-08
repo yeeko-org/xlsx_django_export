@@ -131,6 +131,35 @@ class TestInferOptimizations:
         selects, _ = infer_optimizations(Article, columns)
         assert "publisher" in selects
 
+    def test_attname_normalizes_to_field_name(self):
+        """publisher_id (attname) → select_related('publisher')."""
+        from tests.models import Article
+        columns = [XlsColumn("publisher_id")]
+        selects, _ = infer_optimizations(Article, columns)
+        assert "publisher" in selects
+        assert "publisher_id" not in selects
+
+    def test_virtual_through_skips_child_inference(self):
+        """Include con through inexistente no infiere hijos."""
+        from tests.models import Article, Publisher
+        from yeeko_xlsx_export import ModelExport
+
+        class PubBlock(ModelExport):
+            model = Publisher
+            columns = [
+                FkColumn("articles", "title"),
+            ]
+
+        # "nonexistent" no es FK en Article → virtual
+        columns = [
+            Include(PubBlock, through="nonexistent"),
+        ]
+        selects, prefetches = infer_optimizations(
+            Article, columns,
+        )
+        assert len(selects) == 0
+        assert len(prefetches) == 0
+
     def test_plain_field_no_optimization(self):
         from tests.models import Article
         columns = [XlsColumn("title")]

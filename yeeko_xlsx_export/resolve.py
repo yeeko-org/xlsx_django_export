@@ -145,14 +145,19 @@ def _walk_path_for_optimization(
         if rel_type is None:
             break
 
-        accumulated = (
-            f"{accumulated}__{part}" if accumulated else part
-        )
-
         try:
             field_obj = current_model._meta.get_field(part)
         except Exception:
             break
+
+        # Normalizar attname → name (ej. publisher_id → publisher)
+        # Django 5.1+ resuelve attnames en get_field, pero
+        # select_related requiere el nombre canónico del campo.
+        canonical = field_obj.name
+        accumulated = (
+            f"{accumulated}__{canonical}"
+            if accumulated else canonical
+        )
 
         if rel_type == "prefetch":
             in_prefetch = True
@@ -205,6 +210,8 @@ def infer_optimizations(
             block_model = getattr(col.block, "model", None)
             new_prefix = through_prefix
 
+            through_resolved = True
+
             if col.through:
                 # Inferir optimización para el through mismo
                 s, p = _walk_path_for_optimization(
@@ -216,16 +223,21 @@ def infer_optimizations(
                     f"{through_prefix}__{col.through}"
                     if through_prefix else col.through
                 )
+                # Si through no resolvió a ninguna relación
+                # ORM, es virtual: extract_row lo llena
+                # manualmente, no inferir hijos
+                through_resolved = bool(s or p)
 
             # Recursión sobre las columnas del bloque
-            resolve_model = block_model or model
-            s, p = infer_optimizations(
-                resolve_model,
-                block_instance.columns,
-                new_prefix,
-            )
-            selects.update(s)
-            prefetches.update(p)
+            if through_resolved:
+                resolve_model = block_model or model
+                s, p = infer_optimizations(
+                    resolve_model,
+                    block_instance.columns,
+                    new_prefix,
+                )
+                selects.update(s)
+                prefetches.update(p)
 
         elif isinstance(col, (XlsColumn, FkColumn)):
             path = col.orm_path
